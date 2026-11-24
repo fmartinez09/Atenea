@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/atenea-core",
+    "crates/atenea-clip",
+    "crates/atenea-diff",
+    "crates/atenea-watcher",
+    "crates/atenea-cli",
+    "apps/desktop/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"

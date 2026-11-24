@@ -1,0 +1,24 @@
+# Rust / Cargo
+/target/
+**/*.rs.bk
+
+# Node / Frontend
+node_modules/
+dist/
+apps/desktop/dist/
+
+# Tauri generated artifacts
+apps/desktop/src-tauri/gen/
+apps/desktop/src-tauri/WixTools/
+
+# Local test stores & scratch data
+.atenea-dev/
+.atenea-store/
+.atenea-data/
+fixtures/real/*.clip
+*.tmp
+
+# Signing keys & secrets (never commit private keys)
+*.key
+.env
+.env.*

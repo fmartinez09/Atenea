@@ -1,0 +1,16 @@
+[package]
+name = "atenea-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "atenea"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+atenea-clip = { path = "../atenea-clip" }
+atenea-core = { path = "../atenea-core" }
+atenea-diff = { path = "../atenea-diff" }
+atenea-watcher = { path = "../atenea-watcher" }
+serde_json = "1"

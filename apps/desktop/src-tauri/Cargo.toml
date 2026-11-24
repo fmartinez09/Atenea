@@ -1,0 +1,27 @@
+[package]
+name = "atenea-desktop"
+version.workspace = true
+edition.workspace = true
+description = "Atenea — Versionado seguro y Visual Diff para Clip Studio Paint"
+
+[lib]
+name = "atenea_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anyhow = "1"
+atenea-clip = { path = "../../../crates/atenea-clip" }
+atenea-core = { path = "../../../crates/atenea-core" }
+atenea-diff = { path = "../../../crates/atenea-diff" }
+atenea-watcher = { path = "../../../crates/atenea-watcher" }
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-updater = "2"
+url = "2"

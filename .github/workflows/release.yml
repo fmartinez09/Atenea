@@ -1,0 +1,140 @@
+name: Release Atenea Desktop
+
+# Nunca dispara a ciegas por git push de tags (patrón Hermes):
+# se lanza deliberadamente eligiendo canal (canary/stable) y adapter (github/r2/both).
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Canal de lanzamiento"
+        required: true
+        default: "canary"
+        type: choice
+        options:
+          - canary
+          - stable
+      storage_adapter:
+        description: "Adapter de distribución (github hoy, r2 o both cuando actives Cloudflare R2)"
+        required: true
+        default: "github"
+        type: choice
+        options:
+          - github
+          - r2
+          - both
+      version_override:
+        description: "Versión opcional (ej: 0.1.1). Vacío = usa la versión de tauri.conf.json"
+        required: false
+        default: ""
+        type: string
+      release_notes:
+        description: "Notas de la versión visibles dentro de Atenea"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  quality-gate:
+    name: Compuerta Zero-Corruption y Frontend
+    runs-on: windows-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Instalar Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache de Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Instalar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Ejecutar suite completa de tests Rust (integridad .clip + migración store)
+        run: cargo test --workspace
+
+      - name: Verificar compilación TypeScript y bundle Vite
+        working-directory: apps/desktop
+        run: |
+          npm ci
+          npm run build
+
+  build-and-publish-windows:
+    name: Compilar, Firmar y Publicar (Windows x64 NSIS)
+    needs: quality-gate
+    runs-on: windows-latest
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Instalar Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache de Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Instalar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Instalar dependencias de escritorio
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Ajustar versión y repositorio si aplica
+        shell: pwsh
+        env:
+          VERSION_OVERRIDE: ${{ inputs.version_override }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $confPath = "apps/desktop/src-tauri/tauri.conf.json"
+          $conf = Get-Content $confPath -Raw | ConvertFrom-Json
+          if ($env:VERSION_OVERRIDE -and $env:VERSION_OVERRIDE.Trim() -ne "") {
+            $cleanVer = $env:VERSION_OVERRIDE.Trim().TrimStart("v")
+            $conf.version = $cleanVer
+            (Get-Content "Cargo.toml" -Raw) -replace 'version = "[^"]+"', "version = `"$cleanVer`"" | Set-Content "Cargo.toml" -Encoding UTF8
+            $pkg = Get-Content "apps/desktop/package.json" -Raw | ConvertFrom-Json
+            $pkg.version = $cleanVer
+            $pkg | ConvertTo-Json -Depth 10 | Set-Content "apps/desktop/package.json" -Encoding UTF8
+            Write-Host "Usando versión override sincronizada: $cleanVer"
+          }
+          if (-not $conf.plugins.updater.endpoints -or $conf.plugins.updater.endpoints.Count -eq 0) {
+            $conf.plugins.updater.endpoints = @(
+              "https://github.com/$($env:GH_REPO)/releases/latest/download/latest.json"
+            )
+          }
+          $conf | ConvertTo-Json -Depth 10 | Set-Content $confPath -Encoding UTF8
+
+      - name: Compilar instalador NSIS y firma Minisign (.exe + .exe.sig)
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --bundles nsis
+
+      - name: Publicar artefactos y manifiesto atómico (latest.json)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+          RELEASE_STORAGE: ${{ inputs.storage_adapter }}
+          RELEASE_VERSION: ${{ inputs.version_override }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+          # Secrets opcionales de Cloudflare R2 (solo necesarios cuando storage_adapter = r2 | both)
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_S3_ENDPOINT: ${{ secrets.R2_S3_ENDPOINT }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_URL: ${{ secrets.R2_PUBLIC_URL }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: node scripts/publish-release.mjs
